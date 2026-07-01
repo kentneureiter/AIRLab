@@ -298,6 +298,9 @@ class Grid:
 
     # an optimized counting method that ``batch-counts'' all cells using ulab numpy
     # CRAZY_RANDOM_OPTIMIZATION works in a different way
+    def np_count(self,img,detectors):
+        
+    """
     @micropython.native  # to delete if not necessary. It did improve the inference speed by roughly 1 ms though
     def np_count(self, img, detectors):
         num_rows = self.num_rows
@@ -334,7 +337,7 @@ class Grid:
 
         for detector in detector_values:
             detector.batch_update_cell(stats_array)
-
+    """
 
     def plot_metric(self, metrics, rgb):
         for row in range(self.num_rows):
