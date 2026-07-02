@@ -298,6 +298,47 @@ class Grid:
 
     # an optimized counting method that ``batch-counts'' all cells using ulab numpy
     # CRAZY_RANDOM_OPTIMIZATION works in a different way
+    def np_count(self, img, detectors):
+        raw = img.bytearray()
+        """
+        pixels = np.array(np.frombuffer(raw, dtype=np.uint16), dtype=np.int16)
+        R = ((pixels >> 11) & 0x1F) * (255.0 / 31.0)
+        G = ((pixels >> 5)  & 0x3F) * (255.0 / 63.0)
+        B = ( pixels & 0x1F) * (255.0 / 31.0)
+        """
+        pixels = np.frombuffer(raw, dtype=np.uint16)
+        pf = np.array(pixels, dtype=np.float)   # convert to float first
+        R = (pf // 2048) * (255.0 / 31.0)       # equivalent to >> 11
+        G = ((pf // 32) % 64) * (255.0 / 63.0) # equivalent to >> 5 & 0x3F
+        B = (pf % 32) * (255.0 / 31.0)          # equivalent to & 0x1F
+        R, G, B = R / 255.0, G / 255.0, B / 255.0
+        # Approximate gamma linearization (replacement for np.where which micropython doesn't have
+        R_lin = (R / 12.92) * (R <= 0.04045) + (((R + 0.055) / 1.055) ** 2.4) * (R > 0.04045)
+        G_lin = (G / 12.92) * (G <= 0.04045) + (((G + 0.055) / 1.055) ** 2.4) * (G > 0.04045)
+        B_lin = (B / 12.92) * (B <= 0.04045) + (((B + 0.055) / 1.055) ** 2.4) * (B > 0.04045)
+        X = 0.4124 * R_lin + 0.3576 * G_lin + 0.1805 * B_lin
+        Y = 0.2126 * R_lin + 0.7152 * G_lin + 0.0722 * B_lin
+        Z = 0.0193 * R_lin + 0.1192 * G_lin + 0.9505 * B_lin
+        # XYZ → LAB
+        X, Y, Z = X / 0.95047, Y / 1.00000, Z / 1.08883  # normalize by D65 white point
+        # L = 116 * f(Y) - 16
+        L = 116 * ((Y > 0.008856)*(Y ** (1/3)) + ((Y < 0.008856)*(7.787 * Y + 16/116))) - 16
+        # A = 500 * (f(X) - f(Y))
+        A = 500 * (((X > 0.008856)*(X ** (1/3)) + ((X < 0.008856)*(7.787 * X + 16/116)))-((Y > 0.008856)*(Y ** (1/3)) + ((Y < 0.008856)*(7.787 * Y + 16/116))))
+        # B_lab = 200 * (f(Y) - f(Z))
+        B_lab = 200 * (((Y > 0.008856)*(Y ** (1/3)) + ((Y < 0.008856)*(7.787 * Y + 16/116))) - ((Z > 0.008856)*(Z ** (1/3)) + ((Z < 0.008856)*(7.787 * Z + 16/116))))
+        lab = np.array([L, A, B_lab]).transpose()  # (38400, 3)
+        img_arr = lab.reshape(160, 240, 3)
+        img_arr = img_arr[:14*11, :21*11, :]        # crop → (154, 231, 3)
+        grid = img_arr.reshape(14, 11, 21, 11, 3)
+        grid = grid.transpose(0, 2, 1, 3, 4)
+        cells = grid.reshape(294, 121, 3)
+        means = np.mean(cells, axis=1)  # (294, 3)
+        stds = np.std(cells, axis=1)  # (294, 3)
+        stats_array = np.concatenate((means, stds), axis=1)
+        for detector in detectors.values():
+            detector.batch_update_cell(stats_array)
+    """
     @micropython.native  # to delete if not necessary. It did improve the inference speed by roughly 1 ms though
     def np_count(self, img, detectors):
         num_rows = self.num_rows
@@ -334,7 +375,7 @@ class Grid:
 
         for detector in detector_values:
             detector.batch_update_cell(stats_array)
-
+    """
 
     def plot_metric(self, metrics, rgb):
         for row in range(self.num_rows):

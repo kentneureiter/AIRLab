@@ -1,0 +1,19 @@
+# Makefile for fast_np_count native MicroPython module
+# Targets NiclaVision's STM32H747 (Cortex-M7, double-precision FPU)
+#
+# Usage:
+#   make          → builds fast_np_count.mpy
+#   make clean    → removes build artifacts
+
+# Path to MicroPython repo (cloned to Desktop)
+MPY_DIR = $(HOME)/Desktop/micropython
+
+# Module name and source
+MOD = fast_np_count
+SRC = fast_np_count.c
+
+# Architecture: Cortex-M7 with double-precision FPU
+ARCH = armv7emdp
+
+# Let MicroPython's build system handle all compiler flags and include paths
+include $(MPY_DIR)/py/dynruntime.mk
