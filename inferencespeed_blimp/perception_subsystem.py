@@ -24,6 +24,8 @@ import omv
 import random
 import asyncio
 from ulab import numpy as np
+from fast_np_count import fast_np_count as _fnc_call
+_fnc_buf = bytearray(294 * 6 * 4)
 
 # night mode:
 if board == OPENMV:
@@ -296,16 +298,19 @@ class Grid:
         self.image_bytearray = bytearray(num_cols * num_rows)
 
 
-    # an optimized counting method that ``batch-counts'' all cells using ulab numpy
-    # CRAZY_RANDOM_OPTIMIZATION works in a different way
+
     def np_count(self, img, detectors):
         raw = img.bytearray()
-        """
-        pixels = np.array(np.frombuffer(raw, dtype=np.uint16), dtype=np.int16)
-        R = ((pixels >> 11) & 0x1F) * (255.0 / 31.0)
-        G = ((pixels >> 5)  & 0x3F) * (255.0 / 63.0)
-        B = ( pixels & 0x1F) * (255.0 / 31.0)
-        """
+        _fnc_call(raw, _fnc_buf)
+        stats_array = np.frombuffer(_fnc_buf, dtype=np.float).reshape((294, 6))
+        for detector in detectors.values():
+            detector.batch_update_cell(stats_array)
+
+    # an optimized counting method that ``batch-counts'' all cells using ulab numpy
+    # CRAZY_RANDOM_OPTIMIZATION works in a different way
+    """
+    def np_count(self, img, detectors):
+        raw = img.bytearray()
         pixels = np.frombuffer(raw, dtype=np.uint16)
         pf = np.array(pixels, dtype=np.float)   # convert to float first
         R = (pf // 2048) * (255.0 / 31.0)       # equivalent to >> 11
@@ -329,7 +334,7 @@ class Grid:
         B_lab = 200 * (((Y > 0.008856)*(Y ** (1/3)) + ((Y < 0.008856)*(7.787 * Y + 16/116))) - ((Z > 0.008856)*(Z ** (1/3)) + ((Z < 0.008856)*(7.787 * Z + 16/116))))
         lab = np.array([L, A, B_lab]).transpose()  # (38400, 3)
         img_arr = lab.reshape(160, 240, 3)
-        img_arr = img_arr[:14*11, :21*11, :]        # crop → (154, 231, 3)
+        img_arr = img_arr[:14*11, :21*11, :]  # crop → (154, 231, 3)
         grid = img_arr.reshape(14, 11, 21, 11, 3)
         grid = grid.transpose(0, 2, 1, 3, 4)
         cells = grid.reshape(294, 121, 3)
@@ -338,7 +343,6 @@ class Grid:
         stats_array = np.concatenate((means, stds), axis=1)
         for detector in detectors.values():
             detector.batch_update_cell(stats_array)
-    """
     @micropython.native  # to delete if not necessary. It did improve the inference speed by roughly 1 ms though
     def np_count(self, img, detectors):
         num_rows = self.num_rows
